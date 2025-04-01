@@ -76,13 +76,7 @@ function App() {
             </div>
             <div className="form-group">
               <label>Password:</label>
-              <input 
-                type="password" 
-                name="password" 
-                value={formData.password}
-                onChange={handleInputChange}
-                required 
-              />
+              
             </div>
             {error && <p className="error">{error}</p>}
             <button type="submit">Login</button>
