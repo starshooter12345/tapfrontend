@@ -3,7 +3,7 @@ const router = express.Router();
 const passport = require('passport');
 const jwt = require('jsonwebtoken');
 const { check, validationResult } = require('express-validator');
-const User = require('/models/User');
+const User = require('../models/User');
 const { generateToken } = require('../utils/auth');
 
 // Validation middleware
