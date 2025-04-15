@@ -1,0 +1,8 @@
+.microphone-icon {
+    color: #ff1744;
+  }
+  
+  .microphone-icon.recording {
+    color: #e53935;
+  }
+  
