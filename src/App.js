@@ -3,6 +3,8 @@ import axios from 'axios';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
+import { useNavigate } from 'react-router-dom';
+
 
 // Configure axios defaults
 axios.defaults.baseURL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
@@ -20,6 +22,7 @@ axios.interceptors.response.use(
 );
 
 function App() {
+  const navigate = useNavigate();
   // Authentication state
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authType, setAuthType] = useState(null);
@@ -191,6 +194,12 @@ function App() {
         });
 
         toast.success(`Welcome ${data.user.username}!`);
+        // NEW: Redirect logic based on authType
+        if (authType === 'login') {
+          navigate('/main');  // Redirect to main page after login
+        } else if (authType === 'signup') {
+          navigate('/create-avatar');  // Redirect to create avatar page after signup
+        }
       } catch (error) {
         console.error('Auth error:', error);
         const errorMessage = error.response?.data?.error || 
@@ -329,7 +338,7 @@ function App() {
         </section>
 
         {/* Team Members Slideshow */}
-        <section className="team-section">
+        {/* <section className="team-section">
           <h2>Our Team</h2>
           <div className="team-slider" ref={sliderRef}>
             <div className="team-slides-container">
@@ -377,7 +386,7 @@ function App() {
               ></span>
             ))}
           </div>
-        </section>
+        </section> */}
       </main>
 
       {/* Authentication Modal */}

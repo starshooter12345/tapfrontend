@@ -605,3 +605,12 @@ body {
     padding: 0.8rem;
   }
 }
+/* Page Container */
+.page-container {
+  padding: 2rem;
+  text-align: center;
+}
+
+.page-container h1 {
+  color: #6c5ce7;
+}

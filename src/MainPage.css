@@ -1,0 +1,145 @@
+.main-page {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  
+  .top-bar {
+    background-color: #074040;
+    color: white;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+  }
+  
+  .logo {
+    font-size: 1.4rem;
+    font-weight: bold;
+  }
+  
+  .nav-controls {
+    display: flex;
+    align-items: center;
+    position: relative;
+  }
+  
+  .settings-btn, .logout-btn {
+    background-color: red;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    cursor: pointer;
+    margin-left: 10px;
+    border-radius: 4px;
+  }
+  
+  .settings-btn {
+    background-color: transparent;
+    color: white;
+    font-weight: 500;
+  }
+  
+  .settings-menu {
+    position: absolute;
+    right: 0;
+    top: 35px;
+    background-color: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    border-radius: 4px;
+    list-style: none;
+    padding: 5px 0;
+    width: 180px;
+    z-index: 100;
+  }
+  
+  .settings-menu li {
+    padding: 8px 15px;
+    cursor: pointer;
+    color: #333;
+  }
+  
+  .settings-menu li:hover {
+    background-color: #f0f0f0;
+  }
+  
+  .content-area {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+  
+  .question-history {
+    width: 250px;
+    padding: 15px;
+    border-right: 1px solid #ddd;
+    overflow-y: auto;
+    background-color: #fafafa;
+  }
+  
+  .question-item {
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+  }
+  
+  .avatar-chat-area {
+    flex: 1;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .avatar-image {
+    width: 250px;
+    height: auto;
+    margin-bottom: 20px;
+  }
+  
+  .subtitle {
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+    color: #666;
+  }
+  
+  .chat-input-area {
+    display: flex;
+    width: 80%;
+    max-width: 600px;
+  }
+  
+  .chat-input-area input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px 0 0 4px;
+    font-size: 1rem;
+  }
+  
+  .send-btn {
+    padding: 0 15px;
+    border: 1px solid #ccc;
+    border-left: none;
+    background-color: #f8f8f8;
+    cursor: pointer;
+    border-radius: 0 4px 4px 0;
+  }
+  
+  .send-btn:hover {
+    background-color: #e8e8e8;
+  }
+  
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+  }
+  
