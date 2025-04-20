@@ -7,15 +7,19 @@ const MainPage = () => {
   const navigate = useNavigate();
 
   const [showSettings, setShowSettings] = useState(false);
-  const [question, setQuestion] = useState('');
+  const [questions, setQuestions] = useState([]);
+  const [selectedQuestion, setSelectedQuestion] = useState(null);
+  const [answerInput, setAnswerInput] = useState('');
   const [inputMode, setInputMode] = useState('text');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
 
-  const questions = [
-    "Question 1", "Question 2", "Question 3", "Question 4", "Question 5",
-    "Question 6", "Question 7", "Question 8", "Question 9", "Question 10"
-  ];
+  useEffect(() => {
+    fetch('http://localhost:5000/api/questions')
+      .then(res => res.json())
+      .then(data => setQuestions(data))
+      .catch(err => console.error('Error fetching questions:', err));
+  }, []);
 
   useEffect(() => {
     let timer;
@@ -36,13 +40,33 @@ const MainPage = () => {
     navigate('/');
   };
 
-  const handleSendQuestion = () => {
-    console.log("Question sent:", question);
-    setQuestion('');
+  const handleQuestionClick = (q) => {
+    setSelectedQuestion(q);
+    setAnswerInput('');
   };
 
-  const handleQuestionClick = (selectedQuestion) => {
-    setQuestion(selectedQuestion);
+  const handleSendAnswer = () => {
+    if (!selectedQuestion || !answerInput.trim()) return;
+
+    fetch('http://localhost:5000/api/questions/answer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        questionId: selectedQuestion._id,
+        text: answerInput
+      })
+    })
+      .then(res => res.json())
+      .then(() => {
+        setQuestions(prev =>
+          prev.map(q =>
+            q._id === selectedQuestion._id ? { ...q, answer: answerInput } : q
+          )
+        );
+        setSelectedQuestion(null);
+        setAnswerInput('');
+      })
+      .catch(err => console.error('Error saving answer:', err));
   };
 
   const toggleInputMode = () => {
@@ -66,8 +90,8 @@ const MainPage = () => {
         <div className="logo">Logo</div>
         <nav className="nav-controls">
           <div className="settings-dropdown">
-            <button 
-              className="settings-btn" 
+            <button
+              className="settings-btn"
               onClick={() => setShowSettings(prev => !prev)}
             >
               Settings ▼
@@ -89,40 +113,49 @@ const MainPage = () => {
 
       <div className="content-area">
         <aside className="question-history">
-          {questions.map((q, idx) => (
-            <div 
-              key={idx} 
-              className="question-item" 
+          {questions.map((q) => (
+            <div
+              key={q._id}
+              className="question-item"
               onClick={() => handleQuestionClick(q)}
             >
-              {q}
+              {q.text}
+              {q.answer && <div className="answer-preview"> - {q.answer}</div>}
             </div>
           ))}
         </aside>
 
         <section className="avatar-chat-area">
-          <img 
-            className="avatar-image" 
-            src="/images/avatar.png" 
+          <img
+            className="avatar-image"
+            src="/images/avatar.png"
             alt="User Avatar"
           />
-          <div className="subtitle">Subtitle of the answer...</div>
+          <div className="subtitle">
+            {selectedQuestion
+              ? selectedQuestion.text
+              : 'Select a question to answer'}
+          </div>
 
           <div className="chat-input-area">
             <div className="toggle-switch">
-              <span 
-                className={`toggle-option ${inputMode === 'text' ? 'active' : ''}`} 
+              <span
+                className={`toggle-option ${inputMode === 'text' ? 'active' : ''}`}
                 onClick={() => setInputMode('text')}
-              >Text</span>
-              <span 
-                className={`toggle-option ${inputMode === 'speech' ? 'active' : ''}`} 
+              >
+                Text
+              </span>
+              <span
+                className={`toggle-option ${inputMode === 'speech' ? 'active' : ''}`}
                 onClick={() => setInputMode('speech')}
-              >Speech</span>
+              >
+                Speech
+              </span>
             </div>
 
             {inputMode === 'speech' && (
-              <button 
-                className={`microphone-icon ${isRecording ? 'recording' : ''}`} 
+              <button
+                className={`microphone-icon ${isRecording ? 'recording' : ''}`}
                 onClick={toggleRecording}
               >
                 🎤
@@ -131,12 +164,14 @@ const MainPage = () => {
 
             <input
               type="text"
-              placeholder="Ask me anything..."
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="Answer me anything..."
+              value={answerInput}
+              onChange={(e) => setAnswerInput(e.target.value)}
             />
 
-            <button className="send-btn" onClick={handleSendQuestion}>Send</button>
+            <button className="send-btn" onClick={handleSendAnswer}>
+              Send
+            </button>
           </div>
 
           {isRecording && (
