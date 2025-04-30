@@ -1,9 +1,23 @@
 const mongoose = require('mongoose');
 
 const QuestionSchema = new mongoose.Schema({
-  _id: Number,
-  text: String
-}, { collection: 'questions' }); // ✅ Explicitly use your collection name
+  text: {
+    type: String,
+    required: true
+  },
+  category: {
+    type: String,
+    enum: ['personal', 'preferences', 'feedback'],
+    default: 'feedback'
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+}, { collection: 'test.questions' });
 
 module.exports = mongoose.model('Question', QuestionSchema);
-

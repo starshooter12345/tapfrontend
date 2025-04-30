@@ -1,95 +1,60 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; // Import useNavigate from react-router-dom
 import axios from 'axios';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import './App.css';
-import { useNavigate } from 'react-router-dom';
-
 
 // Configure axios defaults
 axios.defaults.baseURL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
+axios.interceptors.request.use(config => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Add response interceptor for consistent error handling
 axios.interceptors.response.use(
   response => response,
   error => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      toast.error('Session expired. Please login again.');
-      window.location.reload();
+    if (error.response && error.response.status === 400) {
+      const errorData = error.response.data;
+      const errorMessage = errorData.error || errorData.message || 'Bad Request';
+      return Promise.reject(new Error(errorMessage));
     }
     return Promise.reject(error);
   }
 );
 
 function App() {
-  const navigate = useNavigate();
-  // Authentication state
+  const navigate = useNavigate();  // Initialize useNavigate hook for navigation
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authType, setAuthType] = useState(null);
+  const [authType, setAuthType] = useState('login');
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     password: '',
     confirmPassword: '',
+    currentPassword: '',
+    newPassword: '',
     dob: '',
     remember: false
   });
   const [errors, setErrors] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showProfileSidebar, setShowProfileSidebar] = useState(false);
 
-  // Team slideshow state
-  const [currentMemberIndex, setCurrentMemberIndex] = useState(0);
-  const [direction, setDirection] = useState('right');
-  const sliderRef = useRef(null);
+  const [surveys] = useState([
+    { id: 1, name: 'Healthcare Survey', description: 'Survey on healthcare topics', buttonText: 'Start Survey' },
+    { id: 2, name: 'Education Survey', description: 'Survey on education topics', buttonText: 'Coming Soon' },
+    { id: 3, name: 'Technology Survey', description: 'Survey on technology trends', buttonText: 'Coming Soon' }
+  ]);
 
-  // Team members data
-  const teamMembers = [
-    {
-      name: "Nirmalkumar Chauhan",
-      email: "nirmal@example.com",
-      studentId: "S001",
-      role: "Lead Developer",
-      image: "https://via.placeholder.com/150"
-    },
-    {
-      name: "Buddhi Shah",
-      email: "buddhi@example.com",
-      studentId: "S002",
-      role: "AI Specialist",
-      image: "https://via.placeholder.com/150"
-    },
-    {
-      name: "Ravi Soni",
-      email: "ravi@example.com",
-      studentId: "S003",
-      role: "Frontend Developer",
-      image: "https://via.placeholder.com/150"
-    },
-    {
-      name: "Alex Johnson",
-      email: "alex@example.com",
-      studentId: "S004",
-      role: "Backend Developer",
-      image: "https://via.placeholder.com/150"
-    },
-    {
-      name: "Dax Daboriya",
-      email: "dax@example.com",
-      studentId: "S005",
-      role: "UI/UX Designer",
-      image: "https://via.placeholder.com/150"
-    },
-    {
-      name: "Jatin Kaushal",
-      email: "jatin@example.com",
-      studentId: "S006",
-      role: "Project Manager",
-      image: "https://via.placeholder.com/150"
-    }
-  ];
-
-  // Check for existing token on load
+  // Load user from localStorage on mount
   useEffect(() => {
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
@@ -98,448 +63,561 @@ function App() {
       try {
         const parsedUser = JSON.parse(user);
         setCurrentUser(parsedUser);
-        
-        // Verify token is still valid
-        axios.get('/auth/verify', {
-          headers: { Authorization: `Bearer ${token}` }
-        }).catch(() => {
-          handleLogout();
-        });
       } catch (err) {
+        console.error('Error parsing user data:', err);
         handleLogout();
       }
     }
   }, []);
 
-  // Validate form
-  const validateForm = () => {
-    const newErrors = {};
-    const today = new Date();
-    const dobDate = new Date(formData.dob);
-    let age = today.getFullYear() - dobDate.getFullYear();
-    const monthDiff = today.getMonth() - dobDate.getMonth();
-    
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dobDate.getDate())) {
-      age--;
+  // Update form data when profile sidebar opens
+  useEffect(() => {
+    if (showProfileSidebar && currentUser) {
+      setFormData(prev => ({
+        ...prev,
+        username: currentUser.username || '',
+        email: currentUser.email || '',
+        dob: currentUser.dob ? new Date(currentUser.dob).toISOString().split('T')[0] : '',
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      }));
     }
+  }, [showProfileSidebar, currentUser]);
 
-    if (authType === 'signup') {
+  // Form validation
+  const validateForm = (isUpdate = false) => {
+    const newErrors = {};
+    
+    // Common validations for both signup and update
+    if ((authType === 'signup' || isUpdate) && (!currentUser?.isGoogleAuth || formData.newPassword)) {
       if (!formData.username.trim()) {
         newErrors.username = 'Username is required';
       } else if (formData.username.length < 3) {
         newErrors.username = 'Username must be at least 3 characters';
-      } else if (!/^[a-zA-Z0-9_]+$/.test(formData.username)) {
-        newErrors.username = 'Username can only contain letters, numbers and underscores';
       }
-
+  
       if (!formData.dob) {
         newErrors.dob = 'Date of birth is required';
-      } else if (age < 14) {
-        newErrors.dob = 'You must be at least 14 years old';
+      }  else {
+        const today = new Date();
+        const dobDate = new Date(formData.dob);
+        let age = today.getFullYear() - dobDate.getFullYear();
+        const monthDiff = today.getMonth() - dobDate.getMonth();
+        
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dobDate.getDate())) {
+          age--;
+        }
+        
+        if (age < 14) {
+          newErrors.dob = 'You must be at least 14 years old';
+        }
       }
+    }
 
+    if (!isUpdate && !currentUser?.isGoogleAuth) {
+      if (!formData.email) {
+        newErrors.email = 'Email is required';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+        newErrors.email = 'Email is invalid';
+      }
+  
+      if (!formData.password) {
+        newErrors.password = 'Password is required';
+      } else if (formData.password.length < 6) {
+        newErrors.password = 'Password must be at least 6 characters';
+      }
+  
       if (formData.password !== formData.confirmPassword) {
         newErrors.confirmPassword = 'Passwords do not match';
       }
     }
-
-    if (!formData.email) {
-      newErrors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Email is invalid';
+  
+    // Update specific validations
+    if (isUpdate && formData.newPassword) {
+      if (formData.newPassword.length < 6) {
+        newErrors.newPassword = 'Password must be at least 6 characters';
+      }
+  
+      if (formData.newPassword !== formData.confirmPassword) {
+        newErrors.confirmPassword = 'Passwords do not match';
+      }
+  
+      if (!currentUser?.isGoogleAuth && !formData.currentPassword) {
+        newErrors.currentPassword = 'Current password is required';
+      }
     }
-
-    if (!formData.password) {
-      newErrors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
-    }
-
+  
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // Handle authentication form submission
+  // Handle authentication
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
-    if (validateForm()) {
-      setIsLoading(true);
-      try {
-        const endpoint = authType === 'login' ? '/auth/login' : '/auth/signup';
-        const payload = authType === 'login' ? {
-          email: formData.email,
-          password: formData.password
-        } : {
-          username: formData.username,
-          email: formData.email,
-          password: formData.password,
-          dob: formData.dob
-        };
+    
+    // First validate the form (including password match for signup)
+    if (!validateForm()) return;
+    
+    // Additional explicit password match check for signup
+    if (authType === 'signup' && formData.password !== formData.confirmPassword) {
+      toast.error('Passwords do not match');
+      setErrors({ confirmPassword: 'Passwords do not match' });
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      const endpoint = authType === 'login' ? '/auth/login' : '/auth/signup';
+      const payload = authType === 'login' ? {
+        email: formData.email,
+        password: formData.password
+      } : {
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
+        dob: formData.dob
+      };
 
-        const { data } = await axios.post(endpoint, payload);
+      const { data } = await axios.post(endpoint, payload);
 
-        // Store token and user data
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        setCurrentUser(data.user);
-        
-        setShowAuthModal(false);
-        setFormData({
-          username: '',
-          email: '',
-          password: '',
-          confirmPassword: '',
-          dob: '',
-          remember: false
-        });
-
-        toast.success(`Welcome ${data.user.username}!`);
-        // NEW: Redirect logic based on authType
-        if (authType === 'login') {
-          navigate('/main');  // Redirect to main page after login
-        } else if (authType === 'signup') {
-          navigate('/create-avatar');  // Redirect to create avatar page after signup
-        }
-      } catch (error) {
-        console.error('Auth error:', error);
-        const errorMessage = error.response?.data?.error || 
-                          error.response?.data?.message || 
-                          'Authentication failed. Please try again.';
-        setErrors({ submit: errorMessage });
-        toast.error(errorMessage);
-      } finally {
-        setIsLoading(false);
-      }
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      setCurrentUser(data.user);
+      setShowAuthModal(false);
+      resetForm();
+      toast.success(`Welcome ${data.user.username}!`);
+    } catch (error) {
+      handleApiError(error, 'Authentication failed');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Handle input changes
+  // Handle Google login
+  const handleGoogleLogin = async (credentialResponse) => {
+    try {
+      setIsLoading(true);
+      const { data } = await axios.post('/auth/google', {
+        credential: credentialResponse.credential
+      });
+      
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      setCurrentUser(data.user);
+      setShowAuthModal(false);
+      toast.success(`Welcome ${data.user.username}!`);
+    } catch (error) {
+      handleApiError(error, 'Google login failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    
+    // Clear previous errors
+    setErrors({});
+    
+    // Validate form first
+    if (!validateForm(true)) {
+      return;
+    }
+  
+    // Additional explicit checks
+    if (formData.newPassword && formData.newPassword !== formData.confirmPassword) {
+      setErrors({ confirmPassword: 'Passwords do not match' });
+      toast.error('Passwords do not match');
+      return;
+    }
+  
+    // For non-Google users changing password, require current password
+    if (!currentUser?.isGoogleAuth && formData.newPassword && !formData.currentPassword) {
+      setErrors({ currentPassword: 'Current password is required' });
+      toast.error('Current password is required');
+      return;
+    }
+  
+    setIsLoading(true);
+    
+    try {
+      const updateData = {
+        username: formData.username,
+        dob: formData.dob
+      };
+  
+      // Only include password fields if they're being changed
+      if (formData.newPassword) {
+        updateData.newPassword = formData.newPassword;
+        updateData.confirmPassword = formData.confirmPassword;
+        
+        // For non-Google users, include current password
+        if (!currentUser?.isGoogleAuth) {
+          updateData.currentPassword = formData.currentPassword;
+        }
+      }
+      
+      const { data } = await axios.put('/users/me', updateData);
+
+      const updatedUser = {
+        ...currentUser,
+        username: data.username || currentUser.username,
+        dob: data.dob || currentUser.dob
+      };
+  
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setCurrentUser(updatedUser);
+      toast.success('Profile updated successfully!');
+      setShowProfileSidebar(false);
+    } catch (error) {
+      console.error('Update error:', error);
+      toast.error(error.response?.data?.error || 'Profile update failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setCurrentUser(null);
+    setShowProfileSidebar(false);
+    toast.info('You have been logged out');
+  };
+
+  const handleApiError = (error, defaultMessage) => {
+    console.error('API Error:', error);
+    const errorMessage = error.response?.data?.error || 
+                       error.response?.data?.message || 
+                       error.message || 
+                       defaultMessage;
+    setErrors({ submit: errorMessage });
+    toast.error(errorMessage);
+  };
+
+  // Function to handle the input changes
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
-    
-    // Clear error when user types
+
+    // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => {
-        const newErrors = {...prev};
+        const newErrors = { ...prev };
         delete newErrors[name];
         return newErrors;
       });
     }
   };
 
-  // Handle logout
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setCurrentUser(null);
-    toast.info('You have been logged out');
+  // Function to handle the survey start
+  const handleStartSurvey = () => {
+    if (currentUser) {
+      toast.info('Starting survey...');
+      navigate('/main'); // Navigate to MainPage
+    } else {
+      setShowAuthModal(true);
+      setAuthType('login');
+    }
   };
 
-  // Navigate to next team member
-  const nextMember = () => {
-    setDirection('right');
-    setCurrentMemberIndex(prev => 
-      prev === teamMembers.length - 1 ? 0 : prev + 1
-    );
+  // Function to reset form data
+  const resetForm = () => {
+    setFormData({
+      username: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      currentPassword: '',
+      newPassword: '',
+      dob: '',
+      remember: false
+    });
   };
 
-  // Navigate to previous team member
-  const prevMember = () => {
-    setDirection('left');
-    setCurrentMemberIndex(prev => 
-      prev === 0 ? teamMembers.length - 1 : prev - 1
-    );
+  // Function to toggle between login and signup forms
+  const toggleAuthType = () => {
+    setAuthType(prev => prev === 'login' ? 'signup' : 'login');
+    setErrors({});
   };
-
-  // Auto-advance team slideshow
-  useEffect(() => {
-    const interval = setInterval(() => {
-      nextMember();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <div className="app">
-      <ToastContainer 
-        position="top-right"
-        autoClose={5000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-      />
+      <ToastContainer position="top-right" autoClose={5000} />
       
-      {/* Header with User State */}
       <header className="header">
         <div className="logo">Talk Toon Me!</div>
         <nav>
           {currentUser ? (
             <div className="user-controls">
+              {currentUser.profileImage && (
+                <img 
+                  src={currentUser.profileImage} 
+                  alt="Profile" 
+                  className="profile-image"
+                />
+              )}
               <span>Welcome, {currentUser.username}</span>
-              <button className="logout-btn" onClick={handleLogout}>Logout</button>
+              <button className="btn profile-btn" onClick={() => setShowProfileSidebar(true)}>
+                Profile
+              </button>
+              <button className="btn logout-btn" onClick={handleLogout}>
+                Logout
+              </button>
             </div>
           ) : (
-            <button 
-              className="start-btn" 
-              onClick={() => {
-                setShowAuthModal(true);
-                setAuthType(null);
-                setErrors({});
-              }}
-            >
-              Start
+            <button className="btn auth-btn" onClick={() => setShowAuthModal(true)}>
+              Login / Sign Up
             </button>
           )}
         </nav>
       </header>
 
-      {/* Main Content */}
       <main className="main-content">
-        {/* Project Introduction */}
-        <section className="intro-section">
-          <h1>Welcome to Talk Toon Me!</h1>
-          <p className="intro-text">
-            Talk Toon Me! is a revolutionary AI companion that brings conversations to life through 
-            animated avatars. Our state-of-the-art system combines advanced transformer-based language 
-            models with synchronized facial animation for truly lifelike interactions.
-          </p>
-          <div className="features">
-            <div className="feature-card">
-              <h3>🤖 Intelligent Conversations</h3>
-              <p>Context-aware dialogue powered by cutting-edge AI</p>
+        <div className="survey-cards">
+          {surveys.map(survey => (
+            <div key={survey.id} className="survey-card">
+              <h3>{survey.name}</h3>
+              <p>{survey.description}</p>
+              <button
+                className={`btn survey-btn ${survey.buttonText === 'Coming Soon' ? 'disabled' : ''}`}
+                onClick={handleStartSurvey} // Call handleStartSurvey on click
+                disabled={survey.buttonText === 'Coming Soon'}
+              >
+                {survey.buttonText}
+              </button>
             </div>
-            <div className="feature-card">
-              <h3>🎭 Expressive Avatars</h3>
-              <p>Dynamic animations that match speech and emotions</p>
-            </div>
-            <div className="feature-card">
-              <h3>🔒 Safe Interactions</h3>
-              <p>Built-in safety protocols for secure conversations</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Video Section */}
-        <section className="video-section">
-          <h2>See Our AI in Action</h2>
-          <div className="video-container">
-            <div className="video-placeholder">
-              <p>Demo video will be placed here</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Team Members Slideshow */}
-        {/* <section className="team-section">
-          <h2>Our Team</h2>
-          <div className="team-slider" ref={sliderRef}>
-            <div className="team-slides-container">
-              {teamMembers.map((member, index) => (
-                <div 
-                  key={index}
-                  className={`team-slide ${
-                    index === currentMemberIndex ? 'active' : 
-                    index === (currentMemberIndex + 1) % teamMembers.length ? 'next' :
-                    index === (currentMemberIndex - 1 + teamMembers.length) % teamMembers.length ? 'prev' : ''
-                  } ${
-                    direction === 'right' ? 'slide-right' : 'slide-left'
-                  }`}
-                >
-                  <div className="member-card">
-                    <div className="member-image">
-                      <img src={member.image} alt={member.name} />
-                    </div>
-                    <div className="member-info">
-                      <h3>{member.name}</h3>
-                      <p><strong>Email:</strong> {member.email}</p>
-                      <p><strong>Student ID:</strong> {member.studentId}</p>
-                      <p><strong>Role:</strong> {member.role}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button className="slider-arrow left" onClick={prevMember}>
-              &lt;
-            </button>
-            <button className="slider-arrow right" onClick={nextMember}>
-              &gt;
-            </button>
-          </div>
-          <div className="team-dots">
-            {teamMembers.map((_, index) => (
-              <span 
-                key={index}
-                className={`dot ${index === currentMemberIndex ? 'active' : ''}`}
-                onClick={() => {
-                  setDirection(index > currentMemberIndex ? 'right' : 'left');
-                  setCurrentMemberIndex(index);
-                }}
-              ></span>
-            ))}
-          </div>
-        </section> */}
+          ))}
+        </div>
       </main>
 
-      {/* Authentication Modal */}
-      {showAuthModal && (
-        <div className="modal-overlay">
-          <div className="auth-modal">
+      {showProfileSidebar && (
+        <div className="profile-sidebar">
+          <div className="sidebar-header">
+            <h2>Edit Profile</h2>
             <button 
-              className="close-btn"
+              className="close-btn" 
               onClick={() => {
-                setShowAuthModal(false);
-                setAuthType(null);
-                setErrors({});
+                setShowProfileSidebar(false);
+                setFormData(prev => ({
+                  ...prev,
+                  currentPassword: '',
+                  newPassword: '',
+                  confirmPassword: ''
+                }));
               }}
             >
               ×
             </button>
+          </div>
+          <form onSubmit={handleUpdateProfile}>
+            <div className="form-group">
+              <label>Username</label>
+              <input
+                type="text"
+                name="username"
+                value={formData.username}
+                onChange={handleInputChange}
+                disabled={currentUser?.isGoogleAuth && !formData.newPassword}
+              />
+              {currentUser?.isGoogleAuth && !formData.newPassword && (
+                <small className="form-hint">
+                  Set a password to enable username editing
+                </small>
+              )}
+              {errors.username && <span className="error">{errors.username}</span>}
+            </div>
             
-            {!authType ? (
-              <div className="auth-options">
-                <h2>Welcome to Talk Toon Me!</h2>
-                <p>Please choose an option to continue</p>
-                <div className="option-buttons">
-                  <button 
-                    className="auth-option-btn login-option"
-                    onClick={() => setAuthType('login')}
-                  >
-                    Login
-                  </button>
-                  <button 
-                    className="auth-option-btn signup-option"
-                    onClick={() => setAuthType('signup')}
-                  >
-                    Sign Up
-                  </button>
+            <div className="form-group">
+              <label>Email</label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                readOnly
+                className="read-only"
+              />
+            </div>
+            
+            <div className="form-group">
+              <label>Date of Birth</label>
+              <input
+                type="date"
+                name="dob"
+                value={formData.dob}
+                onChange={handleInputChange}
+                disabled={currentUser?.isGoogleAuth && !formData.newPassword}
+              />
+              {errors.dob && <span className="error">{errors.dob}</span>}
+            </div>
+            
+            <div className="password-section">
+              <h3>{currentUser?.isGoogleAuth ? 'Set Password' : 'Change Password'}</h3>
+              
+              {!currentUser?.isGoogleAuth && (
+                <div className="form-group">
+                  <label>Current Password</label>
+                  <input
+                    type="password"
+                    name="currentPassword"
+                    value={formData.currentPassword}
+                    onChange={handleInputChange}
+                    placeholder="Enter current password"
+                  />
                 </div>
-                <div className="social-login">
-                  <button 
-                    className="google-login-btn"
-                    onClick={() => window.location.href = '/api/auth/google'}
-                  >
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google" />
-                    Continue with Google
-                  </button>
-                </div>
+              )}
+              
+              <div className="form-group">
+                <label>New Password</label>
+                <input
+                  type="password"
+                  name="newPassword"
+                  value={formData.newPassword}
+                  onChange={handleInputChange}
+                  placeholder="Enter new password"
+                />
               </div>
-            ) : (
-              <div className="auth-form-container">
-                <h2>{authType === 'login' ? 'Login' : 'Sign Up'}</h2>
-                {errors.submit && <div className="error-message">{errors.submit}</div>}
-                <form onSubmit={handleAuthSubmit}>
-                  {authType === 'signup' && (
-                    <>
-                      <div className="form-group">
-                        <label>Username</label>
-                        <input
-                          type="text"
-                          name="username"
-                          value={formData.username}
-                          onChange={handleInputChange}
-                          className={errors.username ? 'error' : ''}
-                          disabled={isLoading}
-                        />
-                        {errors.username && <span className="error-message">{errors.username}</span>}
-                      </div>
-                      
-                      <div className="form-group">
-                        <label>Date of Birth</label>
-                        <input
-                          type="date"
-                          name="dob"
-                          value={formData.dob}
-                          onChange={handleInputChange}
-                          className={errors.dob ? 'error' : ''}
-                          disabled={isLoading}
-                        />
-                        {errors.dob && <span className="error-message">{errors.dob}</span>}
-                      </div>
-                    </>
-                  )}
-                  
-                  <div className="form-group">
-                    <label>Email</label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      className={errors.email ? 'error' : ''}
-                      disabled={isLoading}
-                    />
-                    {errors.email && <span className="error-message">{errors.email}</span>}
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Password</label>
-                    <input
-                      type="password"
-                      name="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      className={errors.password ? 'error' : ''}
-                      disabled={isLoading}
-                    />
-                    {errors.password && <span className="error-message">{errors.password}</span>}
-                  </div>
-                  
-                  {authType === 'signup' && (
-                    <div className="form-group">
-                      <label>Confirm Password</label>
-                      <input
-                        type="password"
-                        name="confirmPassword"
-                        value={formData.confirmPassword}
-                        onChange={handleInputChange}
-                        className={errors.confirmPassword ? 'error' : ''}
-                        disabled={isLoading}
-                      />
-                      {errors.confirmPassword && <span className="error-message">{errors.confirmPassword}</span>}
-                    </div>
-                  )}
-                  
-                  <div className="form-group remember">
-                    <input
-                      type="checkbox"
-                      name="remember"
-                      checked={formData.remember}
-                      onChange={handleInputChange}
-                      id="remember"
-                      disabled={isLoading}
-                    />
-                    <label htmlFor="remember">Remember me</label>
-                  </div>
-                  
-                  <button 
-                    type="submit" 
-                    className="submit-btn"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <span className="spinner"></span>
-                    ) : authType === 'login' ? 'Login' : 'Sign Up'}
-                  </button>
-                </form>
-                
-                <div className="auth-switch">
-                  {authType === 'login' ? (
-                    <p>Don't have an account? <span onClick={() => setAuthType('signup')}>Sign up</span></p>
-                  ) : (
-                    <p>Already have an account? <span onClick={() => setAuthType('login')}>Login</span></p>
-                  )}
-                </div>
+              
+              <div className="form-group">
+                <label>Confirm Password</label>
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleInputChange}
+                  placeholder="Confirm new password"
+                />
+                {errors.confirmPassword && <span className="error">{errors.confirmPassword}</span>}
+              </div>
+            </div>
+            
+            <button type="submit" className="btn submit-btn" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <span className="spinner" aria-hidden="true"></span>
+                  Updating...
+                </>
+              ) : 'Update Profile'}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {showAuthModal && (
+        <div className="modal-overlay">
+          <div className="auth-modal">
+            <button className="close-btn" onClick={() => setShowAuthModal(false)}>×</button>
+            <h2>{authType === 'login' ? 'Login' : 'Sign Up'}</h2>
+            
+            {errors.submit && <div className="error-message">{errors.submit}</div>}
+            
+            {authType === 'login' && (
+              <div className="google-login-section">
+                <div className="divider">or</div>
+                <GoogleLogin
+                  onSuccess={handleGoogleLogin}
+                  onError={() => toast.error('Google login failed')}
+                  shape="pill"
+                  theme="filled_blue"
+                  size="large"
+                  text="continue_with"
+                />
               </div>
             )}
+            
+            <form onSubmit={handleAuthSubmit}>
+              {authType === 'signup' && (
+                <>
+                  <div className="form-group">
+                    <label>Username</label>
+                    <input
+                      type="text"
+                      name="username"
+                      value={formData.username}
+                      onChange={handleInputChange}
+                    />
+                    {errors.username && <span className="error">{errors.username}</span>}
+                  </div>
+                  <div className="form-group">
+                    <label>Date of Birth</label>
+                    <input
+                      type="date"
+                      name="dob"
+                      value={formData.dob}
+                      onChange={handleInputChange}
+                    />
+                    {errors.dob && <span className="error">{errors.dob}</span>}
+                  </div>
+                </>
+              )}
+              
+              <div className="form-group">
+                <label>Email</label>
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                />
+                {errors.email && <span className="error">{errors.email}</span>}
+              </div>
+              
+              <div className="form-group">
+                <label>Password</label>
+                <input
+                  type="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleInputChange}
+                />
+                {errors.password && <span className="error">{errors.password}</span>}
+              </div>
+              
+              {authType === 'signup' && (
+                <div className="form-group">
+                  <label>Confirm Password</label>
+                  <input
+                    type="password"
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleInputChange}
+                  />
+                  {errors.confirmPassword && <span className="error">{errors.confirmPassword}</span>}
+                </div>
+              )}
+              
+              <div className="form-group remember-me">
+                <input
+                  type="checkbox"
+                  id="remember"
+                  name="remember"
+                  checked={formData.remember}
+                  onChange={handleInputChange}
+                />
+                <label htmlFor="remember">Remember me</label>
+              </div>
+              
+              <button type="submit" className="btn submit-btn" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <span className="spinner" aria-hidden="true"></span>
+                    Processing...
+                  </>
+                ) : authType === 'login' ? 'Login' : 'Sign Up'}
+              </button>
+              
+              <div className="auth-toggle">
+                {authType === 'login' ? (
+                  <p>Don't have an account? <button type="button" onClick={toggleAuthType}>Sign Up</button></p>
+                ) : (
+                  <p>Already have an account? <button type="button" onClick={toggleAuthType}>Login</button></p>
+                )}
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -547,4 +625,10 @@ function App() {
   );
 }
 
-export default App;
+export default function AppWrapper() {
+  return (
+    <GoogleOAuthProvider clientId="632141724461-jjp4cvhlhj3elfsu68evc4be4sfp89e7.apps.googleusercontent.com">
+      <App />
+    </GoogleOAuthProvider>
+  );
+}

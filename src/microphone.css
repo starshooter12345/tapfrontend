@@ -5,4 +5,57 @@
   .microphone-icon.recording {
     color: #e53935;
   }
-  
+  .question-history {
+    border: 2px solid red; /* Temporary debug border */
+  }
+
+  /* ===== Question History Styles ===== */
+.question-history {
+  width: 30%;
+  padding: 20px;
+  background-color: #f8f9fa;
+  overflow-y: auto;
+}
+
+.question-item {
+  padding: 15px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background-color: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.question-item:hover {
+  background-color: #e9ecef;
+}
+
+/* Answered question style */
+.question-item.answered {
+  background-color: #f0f8ff;
+  border-left: 4px solid #4CAF50;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.question-item.answered:hover {
+  background-color: #f0f8ff;
+}
+
+.question-text {
+  font-weight: 500;
+  margin-bottom: 5px;
+}
+
+.answer-status {
+  color: #4CAF50;
+  font-size: 0.8em;
+  display: flex;
+  align-items: center;
+}
+
+.answered-icon {
+  margin-right: 5px;
+  font-size: 1.1em;
+}

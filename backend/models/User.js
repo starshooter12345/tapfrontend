@@ -1,83 +1,82 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 const validator = require('validator');
 
 const userSchema = new mongoose.Schema({
-  username: { 
-    type: String, 
-    unique: true, 
-    required: [true, 'Username is required'],
+  username: {
+    type: String,
+    required: function() { return !this.isGoogleAuth; },
+    unique: true,
     trim: true,
     minlength: [3, 'Username must be at least 3 characters'],
     maxlength: [30, 'Username cannot exceed 30 characters'],
-    match: [/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers and underscores']
+    sparse: true
   },
-  email: { 
-    type: String, 
-    unique: true, 
+  email: {
+    type: String,
     required: [true, 'Email is required'],
+    unique: true,
+    lowercase: true,
     validate: [validator.isEmail, 'Please provide a valid email']
   },
-  password: { 
-    type: String, 
-    required: [true, 'Password is required'],
+  password: {
+    type: String,
+    select: false, // Exclude from the default user selection
     minlength: [6, 'Password must be at least 6 characters'],
-    select: false
+    validate: {
+      validator: function(v) {
+        // Allow empty password for Google Auth users, otherwise ensure it's a valid password
+        if (this.isGoogleAuth && !v) return true;
+        return true;  // No validation, accept any password
+      },
+      message: 'Password is required'
+    }
   },
-  dob: { 
-    type: Date, 
-    required: [true, 'Date of birth is required'],
+  dob: {
+    type: Date,
     validate: {
       validator: function(value) {
-        const age = new Date().getFullYear() - new Date(value).getFullYear();
-        return age >= 14;
+        if (!value) return true; // Allow empty for Google auth users
+        const ageDiff = Date.now() - value.getTime();
+        const ageDate = new Date(ageDiff);
+        return Math.abs(ageDate.getUTCFullYear() - 1970) >= 14;
       },
       message: 'You must be at least 14 years old'
     }
   },
-  googleId: { type: String },
-  createdAt: { type: Date, default: Date.now },
-  lastLogin: { type: Date },
-  isVerified: { type: Boolean, default: false }
-}, {
-  timestamps: true,
-  toJSON: {
-    transform: function(doc, ret) {
-      delete ret.password;
-      delete ret.__v;
-      return ret;
-    }
+  googleId: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  profileImage: String,
+  isGoogleAuth: {
+    type: Boolean,
+    default: false
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
   }
 });
 
-// Hash password before saving
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  
-  try {
-    const salt = await bcrypt.genSalt(12);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (err) {
-    next(err);
+// Auto-generate username for Google users
+userSchema.pre('save', function(next) {
+  // Only auto-generate username for new Google auth users
+  if (this.isGoogleAuth && !this.username && this.isNew) {
+    this.username = this.email.split('@')[0] + Math.floor(1000 + Math.random() * 9000);
   }
+  next();
 });
 
-// Method to compare passwords
-userSchema.methods.comparePassword = async function(candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
-};
+// No password hashing middleware (no bcrypt hashing)
+userSchema.pre('save', function(next) {
+  next();  // Skip hashing password
+});
 
-// Static method to check if email is taken
-userSchema.statics.isEmailTaken = async function(email, excludeUserId) {
-  const user = await this.findOne({ email, _id: { $ne: excludeUserId } });
-  return !!user;
-};
-
-// Static method to check if username is taken
-userSchema.statics.isUsernameTaken = async function(username, excludeUserId) {
-  const user = await this.findOne({ username, _id: { $ne: excludeUserId } });
-  return !!user;
+// Method to compare passwords (plain text)
+userSchema.methods.comparePassword = function(candidatePassword) {
+  if (this.isGoogleAuth) return false;  // Google users can't use password auth
+  return this.password === candidatePassword;  // Directly compare plain text password
 };
 
 module.exports = mongoose.model('User', userSchema);

@@ -1,190 +1,128 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
+import axios from 'axios';
 import './MainPage.css';
-import './microphone.css';
+
+// List of Healthcare Survey questions
+const surveyQuestions = [
+  "Have you visited a clinic in the last month?",
+  "Do you have a nearby clinic or health facility?",
+  "Have you visited a doctor in the past three months?",
+  "Are you able to afford the medicines you’re prescribed?",
+  "Do you or your family have any ongoing medical conditions?",
+  "Have you received any vaccinations in the last year?",
+  "Do you feel confident in the skills of local healthcare providers?",
+  "Have you experienced any delays in receiving medical treatment?",
+  "Do you have access to emergency medical services?",
+  "Are you satisfied with the cleanliness of local clinics?",
+  "Do you have to travel far to get medical care?",
+  "Do women in your household receive proper maternal care?",
+  "How do you usually pay for medical expenses?",
+  "Are medical staff respectful when treating you?",
+  "Do you have access to mental health support?",
+  "Have you ever used a mobile health app or online doctor service?",
+  "Do you have access to dental care?",
+  "Have you ever missed a medical appointment due to transport issues?",
+  "Do you feel your health concerns are taken seriously?",
+  "Is there enough medicine available at the local clinic?"
+];
 
 const MainPage = () => {
-  const navigate = useNavigate();
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [userResponse, setUserResponse] = useState('');
+  const [responses, setResponses] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [showSettings, setShowSettings] = useState(false);
-  const [questions, setQuestions] = useState([]);
-  const [selectedQuestion, setSelectedQuestion] = useState(null);
-  const [answerInput, setAnswerInput] = useState('');
-  const [inputMode, setInputMode] = useState('text');
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
+  const { transcript, resetTranscript, listening } = useSpeechRecognition();
 
+  // Use effect to start asking questions when the page loads
   useEffect(() => {
-    fetch('http://localhost:5000/api/questions')
-      .then(res => res.json())
-      .then(data => setQuestions(data))
-      .catch(err => console.error('Error fetching questions:', err));
+    if (surveyQuestions.length > 0) {
+      askQuestion();
+    }
   }, []);
 
-  useEffect(() => {
-    let timer;
-    if (isRecording) {
-      timer = setInterval(() => {
-        setRecordingTime(prevTime => prevTime + 1);
-      }, 1000);
-    } else {
-      clearInterval(timer);
-      setRecordingTime(0);
+  const askQuestion = () => {
+    const question = surveyQuestions[currentQuestionIndex];
+    if (question) {
+      setUserResponse('');
+      SpeechRecognition.startListening({ continuous: true });
     }
-    return () => clearInterval(timer);
-  }, [isRecording]);
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/');
   };
 
-  const handleQuestionClick = (q) => {
-    setSelectedQuestion(q);
-    setAnswerInput('');
+  const handleSubmitResponse = async () => {
+    if (userResponse.trim() === '') return;
+
+    setIsSubmitting(true);
+
+    // Store response in the database
+    try {
+      await axios.post('/api/survey/submit', {
+        question: surveyQuestions[currentQuestionIndex],
+        response: userResponse
+      });
+      setResponses(prev => [...prev, { question: surveyQuestions[currentQuestionIndex], response: userResponse }]);
+      moveToNextQuestion();
+    } catch (error) {
+      console.error('Error submitting response:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleSendAnswer = () => {
-    if (!selectedQuestion || !answerInput.trim()) return;
-
-    fetch('http://localhost:5000/api/questions/answer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        questionId: selectedQuestion._id,
-        text: answerInput
-      })
-    })
-      .then(res => res.json())
-      .then(() => {
-        setQuestions(prev =>
-          prev.map(q =>
-            q._id === selectedQuestion._id ? { ...q, answer: answerInput } : q
-          )
-        );
-        setSelectedQuestion(null);
-        setAnswerInput('');
-      })
-      .catch(err => console.error('Error saving answer:', err));
+  const moveToNextQuestion = () => {
+    if (currentQuestionIndex < surveyQuestions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
+      askQuestion();
+    } else {
+      alert('Thank you for completing the survey!');
+    }
   };
 
-  const toggleInputMode = () => {
-    setInputMode(inputMode === 'text' ? 'speech' : 'text');
-    setIsRecording(false);
-  };
-
-  const toggleRecording = () => {
-    setIsRecording(!isRecording);
-  };
-
-  const formatTime = (seconds) => {
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
-  };
+  // Speech-to-text response handler
+  useEffect(() => {
+    if (transcript && !listening) {
+      setUserResponse(transcript);
+    }
+  }, [transcript, listening]);
 
   return (
     <div className="main-page">
-      <header className="top-bar">
-        <div className="logo">Logo</div>
-        <nav className="nav-controls">
-          <div className="settings-dropdown">
-            <button
-              className="settings-btn"
-              onClick={() => setShowSettings(prev => !prev)}
-            >
-              Settings ▼
-            </button>
-            {showSettings && (
-              <ul className="settings-menu">
-                <li>Update Profile</li>
-                <li>Update Avatar</li>
-                <li>Update Answer Preferences</li>
-                <li>Update Mode</li>
-              </ul>
-            )}
-          </div>
-          <button className="logout-btn" onClick={handleLogout}>
-            Log Out
-          </button>
-        </nav>
-      </header>
+      <div className="avatar-container">
+        <img
+          src="avatar-image-url.jpg" // Replace with the actual avatar image URL
+          alt="Avatar"
+          className="avatar"
+        />
+        <div className="avatar-speech-bubble">
+          <p>{surveyQuestions[currentQuestionIndex]}</p>
+        </div>
+      </div>
 
-      <div className="content-area">
-        <aside className="question-history">
-          {questions.map((q) => (
-            <div
-              key={q._id}
-              className="question-item"
-              onClick={() => handleQuestionClick(q)}
-            >
-              {q.text}
-              {q.answer && <div className="answer-preview"> - {q.answer}</div>}
-            </div>
-          ))}
-        </aside>
-
-        <section className="avatar-chat-area">
-          <img
-            className="avatar-image"
-            src="/images/avatar.png"
-            alt="User Avatar"
+      <div className="response-box">
+        <h3>Question:</h3>
+        <p className="question-text">{surveyQuestions[currentQuestionIndex]}</p>
+        <div className="response-area">
+          <textarea
+            value={userResponse}
+            onChange={e => setUserResponse(e.target.value)}
+            placeholder="Your response will appear here..."
+            rows="4"
           />
-          <div className="subtitle">
-            {selectedQuestion
-              ? selectedQuestion.text
-              : 'Select a question to answer'}
-          </div>
+          <button
+            onClick={handleSubmitResponse}
+            disabled={isSubmitting}
+            className="submit-response-btn"
+          >
+            {isSubmitting ? 'Submitting...' : 'Submit Answer'}
+          </button>
+        </div>
+      </div>
 
-          <div className="chat-input-area">
-            <div className="toggle-switch">
-              <span
-                className={`toggle-option ${inputMode === 'text' ? 'active' : ''}`}
-                onClick={() => setInputMode('text')}
-              >
-                Text
-              </span>
-              <span
-                className={`toggle-option ${inputMode === 'speech' ? 'active' : ''}`}
-                onClick={() => setInputMode('speech')}
-              >
-                Speech
-              </span>
-            </div>
-
-            {inputMode === 'speech' && (
-              <button
-                className={`microphone-icon ${isRecording ? 'recording' : ''}`}
-                onClick={toggleRecording}
-              >
-                🎤
-              </button>
-            )}
-
-            <input
-              type="text"
-              placeholder="Answer me anything..."
-              value={answerInput}
-              onChange={(e) => setAnswerInput(e.target.value)}
-            />
-
-            <button className="send-btn" onClick={handleSendAnswer}>
-              Send
-            </button>
-          </div>
-
-          {isRecording && (
-            <div className="recording-animation">
-              <div className="waves">
-                <div className="wave"></div>
-                <div className="wave"></div>
-                <div className="wave"></div>
-              </div>
-              <div className="timer">{formatTime(recordingTime)}</div>
-            </div>
-          )}
-        </section>
+      {/* Subtitle Box displaying user response */}
+      <div className="subtitle-box">
+        <h4>Your Response:</h4>
+        <p>{userResponse}</p>
       </div>
     </div>
   );

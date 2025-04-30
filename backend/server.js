@@ -1,48 +1,49 @@
-require('dotenv').config();
+// Update your server.js to this:
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const passport = require('passport');
-const connectDB = require('./config/db');
-const errorHandler = require('./middleware/errorHandler');
-require('./config/passport');
+// Add this with your other route imports
+const googleAuthRoutes = require('./routes/googleAuthRoutes');
 
-// Initialize app
+require('dotenv').config();
+
+// Database Connection
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('MongoDB Connected'))
+  .catch(err => console.error('MongoDB Connection Error:', err));
+
+// Initialize App
 const app = express();
-
-// Connect to MongoDB (with dbName included in config/db.js)
-connectDB();
 
 // Middlewares
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+// Add this with your other route middleware
+// Passport Configuration
+require('./config/passport')(passport);
 app.use(passport.initialize());
 
 // Routes
+app.get('/', (req, res) => res.send('API Running')); // Basic route test
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
-app.use('/api/questions', require('./routes/questionRoutes')); // ✅ This was misplaced earlier
+app.use('/api/auth/google', require('./routes/googleAuthRoutes'));
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'OK', timestamp: new Date() });
+// Error Handling Middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
-// Error handling middleware
-app.use(errorHandler);
-
-// Start server
+// Start Server
 const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err, promise) => {
-  console.error(`Unhandled Error: ${err.message}`);
-  server.close(() => process.exit(1));
 });
